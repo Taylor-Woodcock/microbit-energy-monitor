@@ -24,20 +24,50 @@ DEALINGS IN THE SOFTWARE.
 */
 
 #include "MicroBit.h"
+#include "EnergyMonitor.h"
 
 MicroBit uBit;
+EnergyMonitor monitor(uBit.compass);
+
+void onPowerChange(MicroBitEvent e)
+{
+    uBit.serial.send("Power state change: ");
+    if (e.value == MICROBIT_ELECTRICAL_POWER_EVT_ON)
+        uBit.serial.send("Off->On");
+    
+    if (e.value == MICROBIT_ELECTRICAL_POWER_EVT_OFF)
+        uBit.serial.send("On->Off");
+    
+    uBit.serial.send("\n");
+}
 
 int main()
 {
     // Initialise the micro:bit runtime.
     uBit.init();
+    
+    //uBit.messageBus.listen(MICROBIT_ID_ELECTRICAL_POWER, MICROBIT_ELECTRICAL_POWER_EVT_ON, onPowerChange);
+    //uBit.messageBus.listen(MICROBIT_ID_ELECTRICAL_POWER, MICROBIT_ELECTRICAL_POWER_EVT_OFF, onPowerChange);
+    
+    uBit.display.scroll("u watt?");
 
-    // Insert your code here!
-    uBit.display.scroll("HELLO WORLD! :)");
-
+    while(1)
+    {
+        uBit.serial.send("Usage: ");
+        uBit.serial.send(monitor.getEnergyUsage());
+        
+        uBit.serial.send("\nAmplitude: ");
+        uBit.serial.send(monitor.getAmplitude());
+        
+        uBit.serial.send("\nStatus: ");
+        uBit.serial.send(monitor.isElectricalPowerOn() == 1 ? "On" : "Off");
+        
+        uBit.serial.send("\n");
+        uBit.sleep(250);
+    }
+    
     // If main exits, there may still be other fibers running or registered event handlers etc.
     // Simply release this fiber, which will mean we enter the scheduler. Worse case, we then
     // sit in the idle task forever, in a power efficient sleep.
     release_fiber();
 }
-
