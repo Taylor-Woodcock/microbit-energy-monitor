@@ -23,70 +23,72 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef ENERGY_MONITOR_H
-#define ENERGY_MONITOR_H
+#ifndef MICROBIT_ENERGY_MONITOR_H
+#define MICROBIT_ENERGY_MONITOR_H
 
+#include "MicroBitEvent.h"
+#include "MicroBitFiber.h"
 #include "MicroBitConfig.h"
 #include "MicroBitCompass.h"
 #include "MicroBitComponent.h"
-#include "MicroBitEvent.h"
 #include "MicroBitSystemTimer.h"
-#include "MicroBitFiber.h"
 
 
-#define SAMPLES                                    250
+#define SAMPLES                                    25           // number of samples required to calculate amplitude and watts
+	
+#define RANGE_MIN                                  4000         // the value that represents 0 watts in the range of amplitudes
+#define RANGE_MAX                                  350000       // the value that represents 2700 watts in the range of amplitudes
+#define WATTAGE_MAX                                2700         // the wattage that RANGE_MAX refers to
 
-#define RANGE_MIN                                  4000
-#define RANGE_MAX                                  160000
-#define WATTAGE_MAX                                3000
+#define MICROBIT_ID_ENERGY_MONITOR                 0xDAB        // microbit event ID = 3499
 
-#define MICROBIT_ID_ELECTRICAL_POWER               0xDAB // 3499
+#define MICROBIT_ENERGY_MONITOR_EVT_ON             1            // event for power on detected
+#define MICROBIT_ENERGY_MONITOR_EVT_OFF            2            // event for power off detected
+#define MICROBIT_ENERGY_MONITOR_EVT_CALIBRATE      4            // event to trigger calibration
 
-#define MICROBIT_ELECTRICAL_POWER_EVT_ON           1
-#define MICROBIT_ELECTRICAL_POWER_EVT_OFF          2
+#define MICROBIT_ENERGY_MONITOR_STATE              1            // used for indicating an on->off/off->on status change
+#define MICROBIT_ENERGY_MONITOR_CALIBRATING        1            // used for indicating an on->off/off->on status change
 
-#define MICROBIT_ELECTRICAL_POWER_STATE            1
-
-
-class EnergyMonitor : public MicroBitComponent
+// @author: Taylor Woodcock
+class MicroBitEnergyMonitor : public MicroBitComponent
 {
     protected:
-    
+
         int minFieldStrength;                // min sample of the magnetic field strength
         int maxFieldStrength;                // max sample of the magnetic field strength
         int sample;                          // the index of the current sample
-        
+
         int watts;                           // current electrical power usage in watts
         int amplitude;                       // debug variable for measuring the amplitude of the samples
-        
-        MicroBitCompass* magnetometer;       // the magnetometer used for current sensing
-    
+
+        MicroBitCompass& magnetometer;       // the magnetometer used for current sensing
+
     public:
 
         /**
           * Constructor that initialises the micro:bit magnetometer, the default status, and initialises the idleTick.
           *
           * @param magnetometer an instance of the micro:bit's magnetometer component
-          * 
+          *
           * @code
           * energyMonitor();
           * @endcode
           */
-        EnergyMonitor(MicroBitCompass &magnetometer);
+        MicroBitEnergyMonitor(MicroBitCompass &magnetometer, uint16_t id = MICROBIT_ID_ENERGY_MONITOR);
 
         /**
-          * Periodic callback from MicroBit idle thread. 
+          * Periodic callback from MicroBit idle thread.
           */
         virtual void idleTick();
-        
+
         /**
           *
           * Records one sample from the magnetometer and checks for state changes of the electrical power
           * when a set amount of samples have been gathered and fires various events on a state change.
-          * 
+          *
           */
         int updateSamples();
-        
+
         /**
           * Tests the electrical power is currently on.
           *
@@ -98,7 +100,7 @@ class EnergyMonitor : public MicroBitComponent
           * @return 1 if the electrical power is on, 0 otherwise.
           */
         int isElectricalPowerOn();
-        
+
         /**
           * Takes samples of the amplitude of the electomagnetic field values
           * read using the magnetometer and returns the mapped value in Watts.
@@ -110,55 +112,57 @@ class EnergyMonitor : public MicroBitComponent
           * @return the amount of electrical power being detected in Watts.
           */
         int getEnergyUsage();
+
         
         /**
-          * Calibrates the current sensing values.
-          */
-        void calibrate();
-
-        /**
           * Used for debug purposes for sampling the amplitude of the magnetometer samples.
-          * 
+          *
           * @returns the amplitude of the current sample set
           */
         int getAmplitude();
         
         /**
-          * Destructor for EnergyMonitor, where we deregister this instance from the array of fiber components.
+          * Assists in calibrating the position of the microbit to best sense electrical power.
           */
-        ~EnergyMonitor();
-        
-    private:
+        void calibrate();
         
         /**
-          * Maps a value from one range to another and returns 0 if the value is less than 0.
+          * Returns whether or not the energy monitor is being calibrated.
+          */
+        bool isCalibrating();
+        
+        /**
+          * Removes the calibration status flag.
           * 
+          * @code
+          * monitor.stopCalibration();
+          * @endcode
+          */
+        void stopCalibration();
+
+        /**
+          * Maps a value from one range to another and returns 0 if the value is less than 0.
+          *
           * @param value the value to be mapped from the old range to the new range
           * @param fromLow the low value from the original range
           * @param fromHigh the high value from the original range
           * @param toLow the low value of the new range
           * @param toHigh the high value of the new range
-          * 
+          *
           * @code
           * map(10, 1, 10, 1, 100);
           * // returns 100
           * @endcode
           *
-          * @return the new value within the new range if the value is greater 
+          * @return the new value within the new range if the value is greater
           * than 0, or 0 if the value is less than or equal to 0.
           */
         int map(int value, int fromLow, int fromHigh, int toLow, int toHigh);
         
-        /** 
-          * Approaches a goal value by incrementing the current value by delta.
-          * 
-          * @param goal the goal value to approach
-          * @param current the current value being incremented
-          * @param delta the amount to increment the current value by to reach the goal
-          *
-          * @return the current value + the delta, or the goal if the goal is met
+        /**
+          * Destructor for MicroBitEnergyMonitor, where we deregister this instance from the array of fiber components.
           */
-        int approach(int goal, int current, int delta);
+        ~MicroBitEnergyMonitor();
 };
 
 #endif

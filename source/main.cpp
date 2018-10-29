@@ -24,18 +24,20 @@ DEALINGS IN THE SOFTWARE.
 */
 
 #include "MicroBit.h"
-#include "EnergyMonitor.h"
+#include "MicroBitEnergyMonitor.h"
+#include "MicroBitEnergyMonitorCalibrator.h"
 
 MicroBit uBit;
-EnergyMonitor monitor(uBit.compass);
+MicroBitEnergyMonitor monitor(uBit.compass);
+MicroBitEnergyMonitorCalibrator calibrator(monitor, uBit.display);
 
 void onPowerChange(MicroBitEvent e)
 {
     uBit.serial.send("Power state change: ");
-    if (e.value == MICROBIT_ELECTRICAL_POWER_EVT_ON)
+    if (e.value == MICROBIT_ENERGY_MONITOR_EVT_ON)
         uBit.serial.send("Off->On");
     
-    if (e.value == MICROBIT_ELECTRICAL_POWER_EVT_OFF)
+    if (e.value == MICROBIT_ENERGY_MONITOR_EVT_OFF)
         uBit.serial.send("On->Off");
     
     uBit.serial.send("\n");
@@ -45,26 +47,75 @@ int main()
 {
     // Initialise the micro:bit runtime.
     uBit.init();
-    
+	//uBit.compass.setPeriod(1);
     //uBit.messageBus.listen(MICROBIT_ID_ELECTRICAL_POWER, MICROBIT_ELECTRICAL_POWER_EVT_ON, onPowerChange);
     //uBit.messageBus.listen(MICROBIT_ID_ELECTRICAL_POWER, MICROBIT_ELECTRICAL_POWER_EVT_OFF, onPowerChange);
     
-    uBit.display.scroll("u watt?");
+    //uBit.display.scroll("u watt?");
 
-    while(1)
+	/*while(1) {
+		uBit.serial.send(uBit.compass.getZ());
+		uBit.serial.send("\n");
+	}*/
+    /*while(1)
     {
-        uBit.serial.send("Usage: ");
-        uBit.serial.send(monitor.getEnergyUsage());
-        
-        uBit.serial.send("\nAmplitude: ");
-        uBit.serial.send(monitor.getAmplitude());
-        
-        uBit.serial.send("\nStatus: ");
-        uBit.serial.send(monitor.isElectricalPowerOn() == 1 ? "On" : "Off");
-        
-        uBit.serial.send("\n");
+        uBit.serial.printf("Usage: %d Amplitude: %d Zero Offset: %d Status: %s\n", monitor.getEnergyUsage(), monitor.getAmplitude(), monitor.getZeroOffset(), (monitor.isElectricalPowerOn() == 1 ? "On" : "Off"));
         uBit.sleep(250);
+    }*/
+    
+    /*
+	int minAmplitude = 2147483647;
+    int maxAmplitude = -2147483646;
+    int amplitude = 0;
+    int strength = 0;
+    
+    uBit.sleep(1000);
+    
+    while(true)
+    {
+        
+        amplitude = monitor.getAmplitude();
+        
+        minAmplitude = min(minAmplitude, amplitude);
+        maxAmplitude = max(maxAmplitude, amplitude);
+        
+        strength = monitor.map(amplitude, minAmplitude, maxAmplitude, 0, 4);
+        
+        uBit.serial.send(monitor.getEnergyUsage());
+        uBit.serial.send("\t");
+        uBit.serial.send(amplitude);
+        uBit.serial.send("\t");
+        uBit.serial.send(minAmplitude);
+        uBit.serial.send("\t");
+        uBit.serial.send(maxAmplitude);
+        uBit.serial.send("\t");
+        uBit.serial.send(strength);
+        uBit.serial.send("\n");
+        
+        uBit.display.clear();
+        for(int x = 0; x < 5; x++)
+            uBit.display.image.setPixelValue(x, 4 - strength, 255);
+            
+        uBit.sleep(100);
     }
+    
+    uBit.sleep(1000);
+    while(true){
+        amplitude = monitor.getAmplitude();
+        
+        minAmplitude = min(minAmplitude, amplitude);
+        maxAmplitude = max(maxAmplitude, amplitude);
+        
+        uBit.serial.send(amplitude);
+        uBit.serial.send("\t");
+        uBit.serial.send(maxAmplitude);
+        uBit.serial.send("\t");
+        uBit.serial.send(uBit.compass.getX());
+        uBit.serial.send("\n");
+	}*/
+    
+    uBit.sleep(1000);
+    monitor.calibrate();
     
     // If main exits, there may still be other fibers running or registered event handlers etc.
     // Simply release this fiber, which will mean we enter the scheduler. Worse case, we then

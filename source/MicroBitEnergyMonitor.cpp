@@ -24,53 +24,40 @@ DEALINGS IN THE SOFTWARE.
 */
 
 #include "MicroBitConfig.h"
-#include "EnergyMonitor.h"
 #include "MicroBitSystemTimer.h"
+#include "MicroBitEnergyMonitor.h"
 
 /**
   * Constructor that initialises the micro:bit magnetometer, the default status, and initialises the idleTick.
   *
   * @param magnetometer an instance of the micro:bit's magnetometer component
-  * 
+  *
   * @code
-  * EnergyMonitor monitor;
+  * MicroBitEnergyMonitor monitor;
   * monitor.getEnergyUsage();
   * @endcode
   */
-EnergyMonitor::EnergyMonitor(MicroBitCompass &magnetometer)
+MicroBitEnergyMonitor::MicroBitEnergyMonitor(MicroBitCompass &magnetometer, uint16_t id) : magnetometer(magnetometer)
 {
-    this->magnetometer = &magnetometer;
-    this->magnetometer->setPeriod(1);
-    
+    this->magnetometer.setPeriod(1);
+    this->id = id;
     this->status = 0x00;
     this->sample = 0;
     this->watts = 0;
     this->amplitude = 0;
-    
+    this->minFieldStrength = 2147483647; // set minFieldStrength value to "infinity"
+    this->maxFieldStrength = -2147483646; // set maxFieldStrength value to "-infinity"
+
     fiber_add_idle_component(this);
 }
 
-int EnergyMonitor::updateSamples()
-{
-    // if calibration is in progress, leave
-    if(magnetometer->isCalibrating())
-        return MICROBIT_CALIBRATION_IN_PROGRESS;
-    
-    // if the compass isn't calibrated, calibrate it
-    if(!magnetometer->isCalibrated())
-    {
-        magnetometer->calibrate();
-        return MICROBIT_CALIBRATION_REQUIRED;
-    }
-    
-    int fieldStrength = magnetometer->getFieldStrength();
+int MicroBitEnergyMonitor::updateSamples()
+{    
+    int fieldStrength = magnetometer.getZ();
     
     // update sample min and max
-    if(fieldStrength > maxFieldStrength)
-        maxFieldStrength = fieldStrength;
-
-    if(fieldStrength < minFieldStrength || minFieldStrength == 0)
-        minFieldStrength = fieldStrength;
+    minFieldStrength = min(minFieldStrength, fieldStrength);
+    maxFieldStrength = max(maxFieldStrength, fieldStrength);
     
     sample++;
     
@@ -80,26 +67,30 @@ int EnergyMonitor::updateSamples()
     
     // when enough sampels have been gathered, calculate the amplitude and watts
     amplitude = maxFieldStrength - minFieldStrength; // get the amplitude of the current values
+    
+    // map the amplitude to watts
     watts = map(amplitude, RANGE_MIN, RANGE_MAX, 0, WATTAGE_MAX); // updates usage
     
+    SERIAL_DEBUG->printf("Driver: min %d, max: %d, amp: %d, str:%d\n", minFieldStrength, maxFieldStrength, amplitude, watts);
+    
     sample = 0; // reset sasmple counter
-    minFieldStrength = 0; // reset minFieldStrength value
-    maxFieldStrength = 0; // reset maxFieldStrength value
+    minFieldStrength = 2147483647; // reset minFieldStrength value to "infinity"
+    maxFieldStrength = -2147483646; // reset maxFieldStrength value to "-infinity"
     
     // check to see if we have off->on state change
-    if(isElectricalPowerOn() && !(status & MICROBIT_ELECTRICAL_POWER_STATE))
+    if(isElectricalPowerOn() && !(status & MICROBIT_ENERGY_MONITOR_STATE))
     {
         // record we have a state change, and raise an event
-        status |= MICROBIT_ELECTRICAL_POWER_STATE;
-        MicroBitEvent evt(MICROBIT_ID_ELECTRICAL_POWER, MICROBIT_ELECTRICAL_POWER_EVT_ON);
+        status |= MICROBIT_ENERGY_MONITOR_STATE;
+        MicroBitEvent evt(this->id, MICROBIT_ENERGY_MONITOR_EVT_ON);
     }
     
     // check to see if we have on->off state change
-    if(!isElectricalPowerOn() && (status & MICROBIT_ELECTRICAL_POWER_STATE))
+    if(!isElectricalPowerOn() && (status & MICROBIT_ENERGY_MONITOR_STATE))
     {
         // record state change, and raise an event
         status = 0;
-        MicroBitEvent evt(MICROBIT_ID_ELECTRICAL_POWER, MICROBIT_ELECTRICAL_POWER_EVT_OFF);
+        MicroBitEvent evt(this->id, MICROBIT_ENERGY_MONITOR_EVT_OFF);
     }
     
     return MICROBIT_OK;
@@ -108,7 +99,7 @@ int EnergyMonitor::updateSamples()
 /**
   * Periodic callback from MicroBit idle thread.
   */
-void EnergyMonitor::idleTick()
+void MicroBitEnergyMonitor::idleTick()
 {
     updateSamples();
 }
@@ -123,7 +114,7 @@ void EnergyMonitor::idleTick()
   *
   * @return 1 if the electrical power is on, 0 otherwise.
   */
-int EnergyMonitor::isElectricalPowerOn()
+int MicroBitEnergyMonitor::isElectricalPowerOn()
 {
     return getEnergyUsage() > 0 ? 1 : 0;
 }
@@ -138,50 +129,81 @@ int EnergyMonitor::isElectricalPowerOn()
   *
   * @return the amount of electrical power being detected in Watts.
   */
-int EnergyMonitor::getEnergyUsage()
-{    
+int MicroBitEnergyMonitor::getEnergyUsage()
+{
     return watts;
 }
 
-
 /**
-  * Calibrates the magnetometer by calling the standard calibration function from the MicroBitCompass component.
-  * 
-  * NOTE: Ensure micro:bit is not near an in-use cable when calibrating.
-  */
-void EnergyMonitor::calibrate()
-{
-    magnetometer->calibrate();
-}
-
-/**
-  * Used for debug purposes for sampling the amplitude of the magnetometer samples.
-  * 
+  * Used for for sampling the amplitude of the magnetometer samples.
+  *
   * @returns the amplitude of the current sample set
   */
-int EnergyMonitor::getAmplitude()
+int MicroBitEnergyMonitor::getAmplitude()
 {
     return amplitude;
 }
 
 /**
-  * Maps a value from one range to another and returns 0 if the value is less than 0.
+  * Assists in calibrating the position of the microbit to best sense electrical power.
+  *
+  * @code
+  * monitor.calibrate();
+  * @endcode
+  */
+void MicroBitEnergyMonitor::calibrate()
+{
+    // record that we've started calibrating
+    status |= MICROBIT_ENERGY_MONITOR_CALIBRATING;
+
+    // launch any registred calibration alogrithm
+    MicroBitEvent evt(this->id, MICROBIT_ENERGY_MONITOR_EVT_CALIBRATE);
+}
+
+/**
+  * Returns whether or not the energy monitor is being calibrated.
   * 
+  * @code
+  * if(monitor.isCalibrating())
+  *   serial.send("Energy Monitor is calibrating!");
+  * @endcode
+  */
+bool MicroBitEnergyMonitor::isCalibrating()
+{
+    return (status & MICROBIT_ENERGY_MONITOR_CALIBRATING);
+}
+
+/**
+  * Removes the calibration status flag.
+  * 
+  * @code
+  * monitor.stopCalibration();
+  * @endcode
+  */
+void MicroBitEnergyMonitor::stopCalibration()
+{
+    // record that we've finished calibrating
+    status &= ~MICROBIT_ENERGY_MONITOR_CALIBRATING;
+}
+
+/**
+  * Maps a value from one range to another and returns 0 if the value is less than 0.
+  *
   * @param value the value to be mapped from the old range to the new range
   * @param fromLow the low value from the original range
   * @param fromHigh the high value from the original range
   * @param toLow the low value of the new range
   * @param toHigh the high value of the new range
-  * 
+  *
   * @code
   * map(10, 1, 10, 1, 100);
   * // returns 100
   * @endcode
   *
-  * @return the new value within the new range if the value is greater 
+  * @return the new value within the new range if the value is greater
   * than 0, or 0 if the value is less than or equal to 0.
   */
-int EnergyMonitor::map(int value, int fromLow, int fromHigh, int toLow, int toHigh)
+int MicroBitEnergyMonitor::map(int value, int fromLow, int fromHigh, int toLow, int toHigh)
 {
     int val = ((value - fromLow) * (toHigh - toLow)) / (fromHigh - fromLow) + toLow;
     if(val < 0)
@@ -192,7 +214,7 @@ int EnergyMonitor::map(int value, int fromLow, int fromHigh, int toLow, int toHi
 /**
   * Destructor for MicroBitButton, where we deregister this instance from the array of fiber components.
   */
-EnergyMonitor::~EnergyMonitor()
+MicroBitEnergyMonitor::~MicroBitEnergyMonitor()
 {
     fiber_remove_idle_component(this);
 }
