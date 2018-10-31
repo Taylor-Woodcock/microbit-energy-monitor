@@ -47,7 +47,7 @@ DEALINGS IN THE SOFTWARE.
 #define MICROBIT_ENERGY_MONITOR_EVT_CALIBRATE      4            // event to trigger calibration
 
 #define MICROBIT_ENERGY_MONITOR_STATE              1            // used for indicating an on->off/off->on status change
-#define MICROBIT_ENERGY_MONITOR_CALIBRATING        1            // used for indicating an on->off/off->on status change
+#define MICROBIT_ENERGY_MONITOR_CALIBRATING        2            // used for indicating an on->off/off->on status change
 
 // @author: Taylor Woodcock
 class MicroBitEnergyMonitor : public MicroBitComponent
@@ -82,12 +82,17 @@ class MicroBitEnergyMonitor : public MicroBitComponent
         virtual void idleTick();
 
         /**
+          * Records one sample from the magnetometer and updates the energy usage (watts) when a set
+          * amount of samples have been gathered.
           *
-          * Records one sample from the magnetometer and checks for state changes of the electrical power
-          * when a set amount of samples have been gathered and fires various events on a state change.
-          *
+          * @return the current sample count
           */
         int updateSamples();
+        
+        /**
+          * Checks for state changes of the electrical power and fires various events on a state change.
+          */
+        int updateEvents();
 
         /**
           * Tests the electrical power is currently on.

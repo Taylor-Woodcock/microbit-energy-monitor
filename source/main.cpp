@@ -48,8 +48,8 @@ int main()
     // Initialise the micro:bit runtime.
     uBit.init();
 	//uBit.compass.setPeriod(1);
-    //uBit.messageBus.listen(MICROBIT_ID_ELECTRICAL_POWER, MICROBIT_ELECTRICAL_POWER_EVT_ON, onPowerChange);
-    //uBit.messageBus.listen(MICROBIT_ID_ELECTRICAL_POWER, MICROBIT_ELECTRICAL_POWER_EVT_OFF, onPowerChange);
+    uBit.messageBus.listen(MICROBIT_ID_ENERGY_MONITOR, MICROBIT_ENERGY_MONITOR_EVT_ON, onPowerChange);
+    uBit.messageBus.listen(MICROBIT_ID_ENERGY_MONITOR, MICROBIT_ENERGY_MONITOR_EVT_OFF, onPowerChange);
     
     //uBit.display.scroll("u watt?");
 

@@ -51,6 +51,21 @@ MicroBitEnergyMonitor::MicroBitEnergyMonitor(MicroBitCompass &magnetometer, uint
     fiber_add_idle_component(this);
 }
 
+/**
+  * Periodic callback from MicroBit idle thread.
+  */
+void MicroBitEnergyMonitor::idleTick()
+{
+    updateSamples();
+    updateEvents();
+}
+
+/**
+  * Processes one sample from the magnetometer and calculates the energy usage (watts) when a set
+  * amount of samples have been processed.
+  *
+  * @return the current sample count
+  */
 int MicroBitEnergyMonitor::updateSamples()
 {    
     int fieldStrength = magnetometer.getZ();
@@ -63,7 +78,7 @@ int MicroBitEnergyMonitor::updateSamples()
     
     // if not enough samples have been processed, leave
     if(sample < SAMPLES)
-        return MICROBIT_OK;
+        return sample;
     
     // when enough sampels have been gathered, calculate the amplitude and watts
     amplitude = maxFieldStrength - minFieldStrength; // get the amplitude of the current values
@@ -71,11 +86,20 @@ int MicroBitEnergyMonitor::updateSamples()
     // map the amplitude to watts
     watts = map(amplitude, RANGE_MIN, RANGE_MAX, 0, WATTAGE_MAX); // updates usage
     
-    SERIAL_DEBUG->printf("Driver: min %d, max: %d, amp: %d, str:%d\n", minFieldStrength, maxFieldStrength, amplitude, watts);
-    
     sample = 0; // reset sasmple counter
     minFieldStrength = 2147483647; // reset minFieldStrength value to "infinity"
     maxFieldStrength = -2147483646; // reset maxFieldStrength value to "-infinity"
+    
+    return sample;
+}
+
+/**
+  * Checks for state changes of the electrical power and fires various events on a state change.
+  */
+int MicroBitEnergyMonitor::updateEvents()
+{
+    if(isCalibrating())
+        return MICROBIT_ENERGY_MONITOR_CALIBRATING;
     
     // check to see if we have off->on state change
     if(isElectricalPowerOn() && !(status & MICROBIT_ENERGY_MONITOR_STATE))
@@ -94,14 +118,6 @@ int MicroBitEnergyMonitor::updateSamples()
     }
     
     return MICROBIT_OK;
-}
-
-/**
-  * Periodic callback from MicroBit idle thread.
-  */
-void MicroBitEnergyMonitor::idleTick()
-{
-    updateSamples();
 }
 
 /**
